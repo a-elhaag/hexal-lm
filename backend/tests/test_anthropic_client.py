@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import AsyncIterator
 from unittest.mock import MagicMock
 
@@ -60,7 +62,7 @@ async def test_anthropic_client_streams_deltas() -> None:
 async def test_anthropic_client_marks_cache_control() -> None:
     captured: dict[str, object] = {}
 
-    def _capture_stream(**kwargs: object):  # type: ignore[no-untyped-def]
+    def _capture_stream(**kwargs: object) -> _FakeStream:
         captured.update(kwargs)
         return _FakeStream([])
 
