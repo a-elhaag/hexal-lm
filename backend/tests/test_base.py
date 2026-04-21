@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import pytest
 from app.llm.base import LLMClient, Message, StreamChunk
 
@@ -31,19 +33,35 @@ def test_stream_chunk_optional_fields() -> None:
 
 def test_message_is_frozen() -> None:
     msg = Message(role="user", content="hi")
-    with pytest.raises((AttributeError, TypeError)):
+    with pytest.raises(AttributeError):
         msg.content = "changed"  # type: ignore[misc]
 
 
-def test_llm_client_protocol_runtime_checkable() -> None:
-    from collections.abc import AsyncIterator
+def test_stream_chunk_is_frozen() -> None:
+    chunk = StreamChunk(delta="hi")
+    with pytest.raises(AttributeError):
+        chunk.delta = "changed"  # type: ignore[misc]
 
+
+def test_llm_client_protocol_runtime_checkable() -> None:
     class FakeClient:
         whitelabel = "TestModel"
 
         async def stream(self, messages: list[Message]) -> AsyncIterator[StreamChunk]:
-            async def _gen() -> AsyncIterator[StreamChunk]:
-                yield StreamChunk(delta="tok")
-            return _gen()
+            yield StreamChunk(delta="tok")
 
     assert isinstance(FakeClient(), LLMClient)
+
+
+@pytest.mark.asyncio
+async def test_llm_client_stream_yields_chunks() -> None:
+    class FakeClient:
+        whitelabel = "TestModel"
+
+        async def stream(self, messages: list[Message]) -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(delta="tok")
+
+    client = FakeClient()
+    chunks = [chunk async for chunk in client.stream([])]
+    assert len(chunks) == 1
+    assert chunks[0].delta == "tok"
