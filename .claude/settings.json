@@ -26,7 +26,8 @@
       "Bash(code-review-graph build *)",
       "mcp__code-review-graph__build_or_update_graph_tool",
       "Bash(python -m mypy backend/app/llm/factory.py --strict)",
-      "Bash(python3 -m mypy backend/app/llm/factory.py --strict)"
+      "Bash(python3 -m mypy backend/app/llm/factory.py --strict)",
+      "Bash(claude mcp *)"
     ],
     "additionalDirectories": [
       "/Users/anas/.claude/plans",
