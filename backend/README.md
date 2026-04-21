@@ -19,16 +19,20 @@ FastAPI + uv. Python 3.13.
 
 Schema lives in two places — table DDL is owned by Alembic, policies/triggers/extensions are owned by the Supabase CLI.
 
-**Local dev loop:**
+**Apply migrations (cloud or local):**
 
 ```bash
-# from repo root
-supabase start                     # boots a local Postgres + Studio
-supabase db reset                  # applies supabase/migrations/*.sql (pgcrypto, trigger, RLS)
+# from backend/, after DATABASE_URL is set in .env
 
-# then from backend/
-uv run alembic upgrade head        # applies alembic/versions/*.py (tables + indexes)
+# 1. Supabase-side SQL (pgcrypto, auth.users trigger, RLS policies).
+#    Idempotent — safe to re-run. Uses asyncpg directly, no Supabase CLI needed.
+uv run python scripts/apply_supabase_migrations.py
+
+# 2. Alembic tables + indexes.
+uv run alembic upgrade head
 ```
+
+If you later install the Supabase CLI, `supabase db push` applies the same files in `supabase/migrations/` — the script is just a CLI-less shortcut.
 
 Order matters: the pgcrypto extension from `supabase/migrations/20260421000000_extensions.sql` must be present before Alembic runs, because table DDL calls `gen_random_uuid()`.
 
