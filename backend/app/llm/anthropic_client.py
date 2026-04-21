@@ -47,6 +47,7 @@ class AnthropicClient(LLMClient):
             async for event in stream:
                 etype = getattr(event, "type", None)
                 if etype == "content_block_delta":
-                    delta = getattr(event.delta, "text", None)
+                    ev: Any = event
+                    delta = getattr(ev.delta, "text", None)
                     if delta:
                         yield StreamChunk(delta=delta)

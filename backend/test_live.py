@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Live API test: Anthropic + Azure Foundry."""
+
 from __future__ import annotations
 
 import asyncio
@@ -24,7 +25,9 @@ async def test_anthropic() -> None:
     print(f"Model: {settings.models.get('Apex')}")
     print("Streaming response:")
 
-    async for chunk in client.stream([Message(role="user", content="Say 'Hello from Apex' in one sentence.")]):
+    async for chunk in client.stream(
+        [Message(role="user", content="Say 'Hello from Apex' in one sentence.")]
+    ):
         print(chunk.delta, end="", flush=True)
 
     print("\n✓ Anthropic test passed\n")
@@ -45,7 +48,9 @@ async def test_azure() -> None:
     print(f"Model: {settings.models.get('Atlas')}")
     print("Streaming response:")
 
-    async for chunk in client.stream([Message(role="user", content="Say 'Hello from Atlas' in one sentence.")]):
+    async for chunk in client.stream(
+        [Message(role="user", content="Say 'Hello from Atlas' in one sentence.")]
+    ):
         print(chunk.delta, end="", flush=True)
 
     print("\n✓ Azure test passed\n")

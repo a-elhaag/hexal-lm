@@ -24,15 +24,17 @@ async def test_debug_invoke_streams_plain_text(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(debug, "get_client", lambda wl: _FakeClient())
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        async with client.stream(
+    async with (
+        AsyncClient(transport=transport, base_url="http://test") as client,
+        client.stream(
             "POST",
             "/api/debug/invoke",
             json={"model": "Apex", "query": "hi"},
-        ) as resp:
-            assert resp.status_code == 200
-            body = b""
-            async for b_chunk in resp.aiter_bytes():
-                body += b_chunk
+        ) as resp,
+    ):
+        assert resp.status_code == 200
+        body = b""
+        async for b_chunk in resp.aiter_bytes():
+            body += b_chunk
 
     assert body == b"Hello world"

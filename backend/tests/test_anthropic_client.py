@@ -13,7 +13,7 @@ class _FakeStream:
     def __init__(self, deltas: list[str]) -> None:
         self._deltas = deltas
 
-    async def __aenter__(self) -> "_FakeStream":
+    async def __aenter__(self) -> _FakeStream:
         return self
 
     async def __aexit__(self, *args: object) -> None:
