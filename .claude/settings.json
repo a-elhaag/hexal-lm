@@ -62,11 +62,22 @@
       "Bash(python -c ' *)",
       "Bash(cat)",
       "Bash(chmod +x /tmp/test_models.sh)",
-      "Bash(/tmp/test_models.sh)"
+      "Bash(/tmp/test_models.sh)",
+      "Bash(MOCK_AUTH=1 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000)",
+      "Bash(chmod +x /tmp/test_all_models.sh)",
+      "Bash(/tmp/test_all_models.sh)",
+      "Bash(curl -s -X POST http://localhost:8000/api/query -H 'Content-Type: application/json' -d '{\"mode\": \"oracle\", \"query\": \"Hello\", \"models\": [\"Apex\"]}')",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s -X POST http://localhost:8000/api/query -H 'Content-Type: application/json' -d '{\"mode\": \"oracle\", \"query\": \"Say hello\", \"models\": [\"__TRACKED_VAR__\"]}' --max-time 15)",
+      "Bash(curl -s -X POST http://localhost:8000/api/query -H 'Content-Type: application/json' -d '{\"mode\": \"oracle\", \"query\": \"Say hello in one word\", \"models\": [\"Apex\"]}')",
+      "Bash(chmod +x /tmp/test_all.sh)",
+      "Bash(/tmp/test_all.sh)",
+      "mcp__code-review-graph__get_minimal_context_tool"
     ],
     "additionalDirectories": [
       "/Users/anas/.claude/plans",
-      "/Users/anas/.claude/plugins/cache/claude-plugins-official/remember/0.1.0"
+      "/Users/anas/.claude/plugins/cache/claude-plugins-official/remember/0.1.0",
+      "/private/tmp"
     ]
   },
   "hooks": {

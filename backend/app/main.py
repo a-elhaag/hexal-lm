@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -7,6 +8,8 @@ from fastapi import FastAPI
 
 from app.api.debug import router as debug_router
 from app.api.query import router as query_router
+from app.auth.middleware import get_current_user
+from app.auth.mock import mock_get_current_user
 from app.db.session import dispose_engine
 
 
@@ -19,6 +22,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Hexal-LM Backend", version="0.1.0", lifespan=lifespan)
+
+# Use mock auth in dev mode (MOCK_AUTH=1)
+if os.getenv("MOCK_AUTH") == "1":
+    app.dependency_overrides[get_current_user] = mock_get_current_user
+
 app.include_router(debug_router)
 app.include_router(query_router)
 
