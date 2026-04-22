@@ -1,3 +1,27 @@
+"""SSE event schema for Hexal-LM streaming.
+
+All modes (Oracle, Council, Relay, Workflow) emit the same event vocabulary so
+the frontend has a single consumer.
+
+Event payloads
+--------------
+session        {session_id: str, mode: str}
+prompt_forge   {original: str, improved: str}
+hex_start      {hex: str}
+token          {hex: str, delta: str}
+confidence     {hex: str, score: int, stage: "initial"|"post_review"}
+peer_review    {from: str, to: str, critique: str}
+hex_done       {hex: str, tokens: int, cached_tokens: int}
+synth_start    {}
+synth_token    {delta: str}
+synth_done     {tokens: int}
+lens           {hex: str, interpretation: str}
+primal         {text: str}
+relay_handoff  {from: str, to: str, trigger: "marker"|"confidence"|"apex", reason: str, partial_chars: int}
+done           {session_id: str, duration_ms: int}
+error          {hex: str, code: str, message: str}
+"""
+
 from __future__ import annotations
 
 import json
@@ -19,6 +43,7 @@ _ALLOWED_EVENTS = {
     "synth_done",
     "lens",
     "primal",
+    "relay_handoff",
     "done",
     "error",
 }
