@@ -18,9 +18,16 @@ from app.db.models import Query as QueryRow
 from app.db.models import Session as SessionRow
 from app.llm.base import Message
 from app.llm.factory import get_client
+from app.relay.stream import _relay_stream
 from app.sse import SseEvent, _TokenCarry, _client_tokens, _with_heartbeat, format_event
 
 router = APIRouter(prefix="/api", tags=["query"])
+
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive",
+}
 
 
 class QueryRequest(BaseModel):
@@ -40,38 +47,66 @@ async def query(
     user: AuthUser = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> StreamingResponse:
-    if req.mode != "oracle":
+    if req.mode == "oracle":
+        if len(req.models) != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="oracle mode requires exactly one model in `models`",
+            )
+
+        whitelabel = req.models[0]
+        try:
+            client = get_client(whitelabel)
+        except KeyError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+        session_row, query_row = await _open_session_and_query(db, user.id, req, whitelabel)
+
+        async def _stream() -> AsyncIterator[bytes]:
+            async for chunk in _oracle_stream(db, client, query_row, req.query, whitelabel):
+                yield chunk
+
+        return StreamingResponse(
+            _stream(),
+            media_type="text/event-stream",
+            headers=_SSE_HEADERS,
+        )
+
+    elif req.mode == "relay":
+        if len(req.relay_chain) != 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="relay mode requires exactly two models in relay_chain",
+            )
+
+        wl_a, wl_b = req.relay_chain
+        try:
+            client_a = get_client(wl_a)
+            client_b = get_client(wl_b)
+            apex_client = get_client("Apex")
+        except KeyError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+        session_row, query_row = await _open_session_and_query(db, user.id, req, wl_a)
+        query_row.selected_models = [wl_a, wl_b]
+
+        async def _relay() -> AsyncIterator[bytes]:
+            async for chunk in _relay_stream(
+                db, client_a, client_b, apex_client, query_row, req.query, wl_a, wl_b
+            ):
+                yield chunk
+
+        return StreamingResponse(
+            _relay(),
+            media_type="text/event-stream",
+            headers=_SSE_HEADERS,
+        )
+
+    else:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"mode {req.mode!r} not yet implemented; only 'oracle' is wired",
+            detail=f"mode {req.mode!r} not yet implemented",
         )
-    if len(req.models) != 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="oracle mode requires exactly one model in `models`",
-        )
-
-    whitelabel = req.models[0]
-    try:
-        client = get_client(whitelabel)
-    except KeyError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-
-    session_row, query_row = await _open_session_and_query(db, user.id, req, whitelabel)
-
-    async def _stream() -> AsyncIterator[bytes]:
-        async for chunk in _oracle_stream(db, client, query_row, req.query, whitelabel):
-            yield chunk
-
-    return StreamingResponse(
-        _stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
 
 
 async def _open_session_and_query(
