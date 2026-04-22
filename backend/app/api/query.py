@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -18,11 +17,16 @@ from app.db.models import Query as QueryRow
 from app.db.models import Session as SessionRow
 from app.llm.base import Message
 from app.llm.factory import get_client
-from app.sse import HEARTBEAT, SseEvent, format_event
+from app.relay.stream import _relay_stream
+from app.sse import SseEvent, _TokenCarry, _client_tokens, _with_heartbeat, format_event
 
 router = APIRouter(prefix="/api", tags=["query"])
 
-_HEARTBEAT_INTERVAL_SECONDS = 15.0
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive",
+}
 
 
 class QueryRequest(BaseModel):
@@ -42,38 +46,66 @@ async def query(
     user: AuthUser = Depends(get_current_user),  # noqa: B008
     db: AsyncSession = Depends(get_session),  # noqa: B008
 ) -> StreamingResponse:
-    if req.mode != "oracle":
+    if req.mode == "oracle":
+        if len(req.models) != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="oracle mode requires exactly one model in `models`",
+            )
+
+        whitelabel = req.models[0]
+        try:
+            client = get_client(whitelabel)
+        except KeyError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+        session_row, query_row = await _open_session_and_query(db, user.id, req, whitelabel)
+
+        async def _stream() -> AsyncIterator[bytes]:
+            async for chunk in _oracle_stream(db, client, query_row, req.query, whitelabel):
+                yield chunk
+
+        return StreamingResponse(
+            _stream(),
+            media_type="text/event-stream",
+            headers=_SSE_HEADERS,
+        )
+
+    elif req.mode == "relay":
+        if len(req.relay_chain) != 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="relay mode requires exactly two models in relay_chain",
+            )
+
+        wl_a, wl_b = req.relay_chain
+        try:
+            client_a = get_client(wl_a)
+            client_b = get_client(wl_b)
+            apex_client = get_client("Apex")
+        except KeyError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+        session_row, query_row = await _open_session_and_query(db, user.id, req, wl_a)
+        query_row.selected_models = [wl_a, wl_b]
+
+        async def _relay() -> AsyncIterator[bytes]:
+            async for chunk in _relay_stream(
+                db, client_a, client_b, apex_client, query_row, req.query, wl_a, wl_b
+            ):
+                yield chunk
+
+        return StreamingResponse(
+            _relay(),
+            media_type="text/event-stream",
+            headers=_SSE_HEADERS,
+        )
+
+    else:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"mode {req.mode!r} not yet implemented; only 'oracle' is wired",
+            detail=f"mode {req.mode!r} not yet implemented",
         )
-    if len(req.models) != 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="oracle mode requires exactly one model in `models`",
-        )
-
-    whitelabel = req.models[0]
-    try:
-        client = get_client(whitelabel)
-    except KeyError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-
-    session_row, query_row = await _open_session_and_query(db, user.id, req, whitelabel)
-
-    async def _stream() -> AsyncIterator[bytes]:
-        async for chunk in _oracle_stream(db, client, query_row, req.query, whitelabel):
-            yield chunk
-
-    return StreamingResponse(
-        _stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
-    )
 
 
 async def _open_session_and_query(
@@ -191,61 +223,3 @@ async def _oracle_stream(
         SseEvent("done", {"session_id": session_id, "duration_ms": duration_ms})
     )
 
-
-# --- helpers -----------------------------------------------------------------
-
-
-class _TokenCarry:
-    """Sentinel passed from the token iterator to the main loop with final counts.
-
-    Not emitted to the wire. Consumed by the Oracle handler after the stream ends.
-    """
-
-    __slots__ = ("cached_tokens", "total_tokens")
-
-    def __init__(self, total_tokens: int | None, cached_tokens: int | None) -> None:
-        self.total_tokens = total_tokens
-        self.cached_tokens = cached_tokens
-
-
-async def _client_tokens(
-    client: object,
-    messages: list[Message],
-    whitelabel: str,
-    collected: list[str],
-) -> AsyncIterator[bytes | _TokenCarry]:
-    total: int | None = None
-    cached: int | None = None
-    async for chunk in client.stream(messages):  # type: ignore[attr-defined]
-        if chunk.delta:
-            collected.append(chunk.delta)
-            yield format_event(
-                SseEvent("token", {"hex": whitelabel, "delta": chunk.delta})
-            )
-        if chunk.total_tokens is not None:
-            total = chunk.total_tokens
-        if chunk.cached_tokens is not None:
-            cached = chunk.cached_tokens
-    yield _TokenCarry(total_tokens=total, cached_tokens=cached)
-
-
-async def _with_heartbeat(
-    src: AsyncIterator[bytes | _TokenCarry],
-) -> AsyncIterator[bytes | _TokenCarry]:
-    """Yield from `src`, injecting a keep-alive comment every 15s of silence."""
-    iterator = src.__aiter__()
-    while True:
-        get_next = asyncio.ensure_future(iterator.__anext__())
-        try:
-            while True:
-                try:
-                    item = await asyncio.wait_for(
-                        asyncio.shield(get_next), timeout=_HEARTBEAT_INTERVAL_SECONDS
-                    )
-                except TimeoutError:
-                    yield HEARTBEAT
-                    continue
-                yield item
-                break
-        except StopAsyncIteration:
-            return
