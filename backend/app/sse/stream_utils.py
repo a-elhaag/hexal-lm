@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from app.llm.base import Message
 from app.sse.events import HEARTBEAT, SseEvent, format_event
 
-__all__ = ["_HEARTBEAT_INTERVAL_SECONDS", "_TokenCarry", "_client_tokens", "_with_heartbeat"]
+__all__ = ["_TokenCarry", "_client_tokens", "_with_heartbeat"]
 
 _HEARTBEAT_INTERVAL_SECONDS = 15.0
 
@@ -65,3 +65,5 @@ async def _with_heartbeat(
                 break
         except StopAsyncIteration:
             return
+        finally:
+            get_next.cancel()

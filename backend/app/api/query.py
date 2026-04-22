@@ -18,8 +18,7 @@ from app.db.models import Query as QueryRow
 from app.db.models import Session as SessionRow
 from app.llm.base import Message
 from app.llm.factory import get_client
-from app.sse import HEARTBEAT, SseEvent, format_event
-from app.sse.stream_utils import _TokenCarry, _client_tokens, _with_heartbeat
+from app.sse import SseEvent, _TokenCarry, _client_tokens, _with_heartbeat, format_event
 
 router = APIRouter(prefix="/api", tags=["query"])
 
