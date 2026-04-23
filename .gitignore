@@ -1,3 +1,10 @@
 # Added by code-review-graph
 .code-review-graph/
 .worktrees/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
