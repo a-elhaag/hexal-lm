@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useRef, forwardRef, useImperativeHandle } from "react";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
   Users, Crosshair, ArrowRightLeft,
   Workflow as WorkflowIcon, Search, Zap,
   type LucideIcon,
 } from "lucide-react";
+
+gsap.registerPlugin(ScrollTrigger);
 
 interface Feature { name: string; Icon: LucideIcon; desc: string; }
 
@@ -21,165 +24,245 @@ const FEATURES: Feature[] = [
 
 const COLS = 3;
 const ROWS = 2;
-const SPRING = { type: "spring", stiffness: 38, damping: 14, mass: 1 } as const;
 
-function gridTemplate(activeIdx: number) {
-  const col = activeIdx % COLS;
-  const row = Math.floor(activeIdx / COLS);
-  const cols = Array(COLS).fill("0.55fr").map((v, i) => (i === col ? "2fr" : v));
-  const rows = Array(ROWS).fill("0.55fr").map((v, i) => (i === row ? "2fr" : v));
-  return { cols: cols.join(" "), rows: rows.join(" ") };
+function colsFor(idx: number) {
+  return Array.from({ length: COLS }, (_, i) => (i === idx % COLS ? "2fr" : "0.55fr")).join(" ");
+}
+function rowsFor(idx: number) {
+  return Array.from({ length: ROWS }, (_, i) => (i === Math.floor(idx / COLS) ? "2fr" : "0.55fr")).join(" ");
 }
 
-function FeatureCard({
-  feature, active, onActivate,
-}: {
-  feature: Feature; active: boolean; onActivate: () => void;
-}) {
-  const { name, Icon, desc } = feature;
+interface CardRefs {
+  card:   HTMLDivElement;
+  accent: HTMLDivElement;
+  ghost:  HTMLDivElement;
+  icon:   HTMLDivElement;
+  name:   HTMLDivElement;
+  desc:   HTMLParagraphElement;
+}
 
-  return (
-    <motion.div
-      layout
-      onClick={onActivate}
-      transition={SPRING}
-      className="relative overflow-hidden rounded-card cursor-pointer select-none"
-      animate={{
-        boxShadow: active
-          ? "0 28px 72px rgba(0,0,0,0.28)"
-          : "0 1px 6px rgba(0,0,0,0.07)",
-        borderColor: active
-          ? "rgba(98,144,195,0.4)"
-          : "rgba(168,144,128,0.13)",
-        borderWidth: "1.5px",
-      }}
-      style={{ background: "#faf7f4", borderStyle: "solid" }}
-    >
-      {/* Accent bar */}
-      <motion.div
-        layout
-        animate={{ height: active ? 3 : 0 }}
-        transition={SPRING}
-        className="absolute top-0 left-0 right-0 rounded-t-card bg-accent"
-      />
+const FeatureCard = forwardRef<CardRefs, { feature: Feature; initialActive: boolean }>(
+  function FeatureCard({ feature, initialActive }, ref) {
+    const { name, Icon, desc } = feature;
 
-      {/* Ghost icon — only shows when active, fades with resize */}
-      <AnimatePresence>
-        {active && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.7, x: 20, y: 20 }}
-            animate={{ opacity: 0.14, scale: 1.2, x: 12, y: 12 }}
-            exit={{ opacity: 0, scale: 0.7, x: 20, y: 20 }}
-            transition={SPRING}
-            className="pointer-events-none absolute right-0 bottom-0 text-surface"
-          >
-            <Icon size={160} strokeWidth={0.55} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+    const cardRef   = useRef<HTMLDivElement>(null);
+    const accentRef = useRef<HTMLDivElement>(null);
+    const ghostRef  = useRef<HTMLDivElement>(null);
+    const iconRef   = useRef<HTMLDivElement>(null);
+    const nameRef   = useRef<HTMLDivElement>(null);
+    const descRef   = useRef<HTMLParagraphElement>(null);
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+    useImperativeHandle(ref, () => ({
+      card:   cardRef.current!,
+      accent: accentRef.current!,
+      ghost:  ghostRef.current!,
+      icon:   iconRef.current!,
+      name:   nameRef.current!,
+      desc:   descRef.current!,
+    }));
 
-        {/* Icon — uses AnimatePresence so flex recenter naturally (no text jump) */}
-        <AnimatePresence initial={false}>
-          {!active && (
-            <motion.div
-              key="icon"
-              initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.4 }}
-              transition={SPRING}
-              className="text-accent"
-            >
-              <Icon size={48} strokeWidth={1.2} />
-            </motion.div>
-          )}
-        </AnimatePresence>
+    return (
+      <div
+        ref={cardRef}
+        className="relative overflow-hidden rounded-card cursor-pointer select-none"
+        style={{
+          background:  "#faf7f4",
+          border:      "1.5px solid rgba(168,144,128,0.13)",
+          boxShadow:   initialActive ? "0 28px 72px rgba(0,0,0,0.28)" : "0 1px 6px rgba(0,0,0,0.07)",
+        }}
+      >
+        <div ref={accentRef} style={{ display: "none" }} />
 
-        {/* Name */}
-        <motion.div
-          animate={{
-            color: active ? "var(--color-accent)" : "var(--color-bg)",
-            fontSize: active ? "1.65rem" : "1.05rem",
-          }}
-          transition={SPRING}
-          className="font-extrabold tracking-tight leading-[1.1]"
+        {/* Ghost icon — invisible until activated */}
+        <div
+          ref={ghostRef}
+          className="pointer-events-none absolute right-0 bottom-0 text-muted"
+          style={{ opacity: 0, transform: "translate(20px, 20px) scale(0.8)" }}
         >
-          {name}
-        </motion.div>
+          <Icon size={160} strokeWidth={0.55} />
+        </div>
 
-        {/* Desc */}
-        <AnimatePresence initial={false}>
-          {active && (
-            <motion.p
-              key="desc"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 44, damping: 16, delay: 0.1 }}
-              className="text-[0.8rem] font-medium text-[#7a6a62] leading-[1.72] max-w-[18rem]"
-            >
-              {desc}
-            </motion.p>
-          )}
-        </AnimatePresence>
+        {/* Content */}
+        <div className="relative z-10 flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
+
+          {/* Small icon — hidden from paint on active card */}
+          <div
+            ref={iconRef}
+            className="text-accent"
+            style={{ opacity: initialActive ? 0 : 1 }}
+          >
+            <Icon size={48} strokeWidth={1.2} />
+          </div>
+
+          {/* Name */}
+          <div
+            ref={nameRef}
+            className="font-extrabold tracking-tight leading-[1.1]"
+            style={{
+              color:    initialActive ? "var(--color-accent)" : "var(--color-bg)",
+              fontSize: initialActive ? "1.65rem"             : "1.05rem",
+            }}
+          >
+            {name}
+          </div>
+
+          {/* Desc — out of flow when inactive so siblings stay truly centered */}
+          <p
+            ref={descRef}
+            className="text-[0.8rem] font-medium text-[#7a6a62] leading-[1.72] max-w-[18rem]"
+            style={{ opacity: initialActive ? 1 : 0, display: initialActive ? "block" : "none" }}
+          >
+            {desc}
+          </p>
+        </div>
       </div>
-    </motion.div>
+    );
+  }
+);
+
+// Instantly reset a card to inactive state, killing any in-progress tweens
+function collapseInstant(refs: CardRefs) {
+  gsap.killTweensOf([refs.accent, refs.ghost, refs.icon, refs.name, refs.desc, refs.card]);
+  gsap.set(refs.accent, { height: 0 });
+  gsap.set(refs.ghost,  { opacity: 0, scale: 0.8, x: 20, y: 20 });
+  gsap.set(refs.name,   { color: "var(--color-bg)", fontSize: "1.05rem" });
+  gsap.set(refs.desc,   { opacity: 0, y: 6, display: "none" });
+  gsap.set(refs.card,   { boxShadow: "0 1px 6px rgba(0,0,0,0.07)", borderColor: "rgba(168,144,128,0.13)" });
+  gsap.set(refs.icon,   { opacity: 1, scale: 1, y: 0 });
+}
+
+function expand(idx: number, refs: CardRefs, gridEl: HTMLDivElement | null) {
+  const tl = gsap.timeline();
+
+  if (gridEl) {
+    tl.to(gridEl, {
+      gridTemplateColumns: colsFor(idx),
+      gridTemplateRows:    rowsFor(idx),
+      duration: 0.85,
+      ease: "power3.out",
+    }, 0);
+  }
+
+  tl.to(refs.card, {
+    boxShadow:   "0 28px 72px rgba(0,0,0,0.28)",
+    borderColor: "rgba(98,144,195,0.4)",
+    duration: 0.6, ease: "power2.out",
+  }, 0);
+
+  // Content enters after grid mostly settled
+  tl.to(refs.icon, { opacity: 0, scale: 0.5, y: -10, duration: 0.25, ease: "power2.in" }, 0.6);
+  tl.to(refs.name, { color: "var(--color-accent)", fontSize: "1.65rem", duration: 0.45, ease: "power2.inOut" }, 0.62);
+  tl.fromTo(refs.ghost,
+    { opacity: 0, scale: 0.75, x: 20, y: 20 },
+    { opacity: 0.14, scale: 1.2, x: 12, y: 12, duration: 0.55, ease: "power2.out" },
+    0.68
   );
+  tl.set(refs.desc, { display: "block" }, 0.72);
+  tl.fromTo(refs.desc,
+    { opacity: 0, y: 8 },
+    { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" },
+    0.72
+  );
+
+  return tl;
+}
+
+function collapse(refs: CardRefs) {
+  const tl = gsap.timeline();
+  tl.to(refs.desc,   { opacity: 0, y: 6, duration: 0.2, ease: "power2.in" }, 0);
+  tl.set(refs.desc,  { display: "none" }, 0.2);
+  tl.to(refs.ghost,  { opacity: 0, scale: 0.8, duration: 0.2, ease: "power2.in" }, 0);
+  tl.to(refs.name,   { color: "var(--color-bg)", fontSize: "1.05rem", duration: 0.32, ease: "power2.inOut" }, 0);
+  tl.to(refs.card,   { boxShadow: "0 1px 6px rgba(0,0,0,0.07)", borderColor: "rgba(168,144,128,0.13)", duration: 0.4 }, 0);
+  tl.fromTo(refs.icon,
+    { opacity: 0, scale: 0.5, y: -10 },
+    { opacity: 1, scale: 1, y: 0, duration: 0.38, ease: "power2.out" },
+    0.24
+  );
+  return tl;
 }
 
 export function Features() {
-  const [active, setActive] = useState(0);
   const sectionRef = useRef<HTMLDivElement>(null);
-  const { cols, rows } = gridTemplate(active);
+  const gridRef    = useRef<HTMLDivElement>(null);
+  const cardRefs   = useRef<(CardRefs | null)[]>([]);
+  const activeIdx  = useRef(0);
+  const tlRef      = useRef<gsap.core.Timeline | null>(null);
+
+  function activateCard(idx: number) {
+    if (idx === activeIdx.current) return;
+
+    const prevIdx = activeIdx.current;
+    activeIdx.current = idx;
+
+    tlRef.current?.kill();
+
+    // Any card that's neither prev nor next: instant reset (avoids stuck mid-animation state)
+    cardRefs.current.forEach((refs, i) => {
+      if (refs && i !== prevIdx && i !== idx) collapseInstant(refs);
+    });
+
+    const prev = cardRefs.current[prevIdx];
+    const next = cardRefs.current[idx];
+    if (!next) return;
+
+    const tl = gsap.timeline();
+    if (prev) tl.add(collapse(prev), 0);
+    tl.add(expand(idx, next, gridRef.current), prev ? 0.15 : 0);
+    tlRef.current = tl;
+  }
 
   useEffect(() => {
-    const handleScroll = () => {
-      const el = sectionRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const progress = Math.max(0, Math.min(1, -rect.top / (rect.height - window.innerHeight)));
-      const idx = Math.min(FEATURES.length - 1, Math.floor(progress * FEATURES.length * 1.05));
-      setActive(idx);
+    // Run initial expand (grid already at correct cols/rows in HTML, only animates content)
+    const first = cardRefs.current[0];
+    if (first) tlRef.current = expand(0, first, null); // null = skip grid animation on mount
+
+    const st = ScrollTrigger.create({
+      trigger: sectionRef.current,
+      start:   "top top",
+      end:     "bottom bottom",
+      onUpdate(self) {
+        const idx = Math.min(FEATURES.length - 1, Math.floor(self.progress * FEATURES.length));
+        activateCard(idx);
+      },
+    });
+
+    return () => {
+      st.kill();
+      tlRef.current?.kill();
     };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div ref={sectionRef} style={{ height: `${FEATURES.length * 65}vh` }} className="relative">
+    <div ref={sectionRef} style={{ height: `${FEATURES.length * 90}vh` }} className="relative">
       <div className="sticky top-0 h-screen flex flex-col items-center justify-center gap-5 px-6">
 
-        {/* Label */}
         <div className="flex items-center gap-2 self-start px-4 w-full max-w-300 mx-auto">
           <span className="text-[0.63rem] font-bold uppercase tracking-[0.18em] text-muted">Modes</span>
           <div className="w-10 h-px bg-[rgba(168,144,128,0.2)]" />
         </div>
 
-        {/* Grid — fills most of the viewport */}
-        <motion.div
-          animate={{
-            gridTemplateColumns: cols,
-            gridTemplateRows: rows,
-          }}
-          transition={SPRING}
+        <div
+          ref={gridRef}
           style={{
-            display: "grid",
-            gap: "1rem",
-            width: "min(1200px, 96vw)",
-            height: "clamp(480px, 72vh, 700px)",
+            display:             "grid",
+            gridTemplateColumns: colsFor(0),
+            gridTemplateRows:    rowsFor(0),
+            gap:                 "1rem",
+            width:               "min(1200px, 96vw)",
+            height:              "clamp(480px, 72vh, 700px)",
           }}
         >
           {FEATURES.map((f, i) => (
             <FeatureCard
               key={f.name}
+              ref={el => { cardRefs.current[i] = el; }}
               feature={f}
-              active={active === i}
-              onActivate={() => setActive(i)}
+              initialActive={i === 0}
             />
           ))}
-        </motion.div>
+        </div>
       </div>
     </div>
   );
