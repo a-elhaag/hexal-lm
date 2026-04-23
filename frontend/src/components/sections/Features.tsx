@@ -236,11 +236,19 @@ export function Features() {
 
   return (
     <div ref={sectionRef} style={{ height: `${FEATURES.length * 90}vh` }} className="relative">
-      <div className="sticky top-0 h-screen flex flex-col items-center justify-center gap-5 px-6">
+      <div className="sticky top-0 h-screen flex flex-col items-center justify-center gap-8 px-6">
 
-        <div className="flex items-center gap-2 self-start px-4 w-full max-w-300 mx-auto">
-          <span className="text-[0.63rem] font-bold uppercase tracking-[0.18em] text-muted">Modes</span>
-          <div className="w-10 h-px bg-[rgba(168,144,128,0.2)]" />
+        <div className="self-start w-full max-w-300 mx-auto px-4">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-[0.63rem] font-bold uppercase tracking-[0.18em] text-muted">Modes</span>
+            <div className="w-10 h-px bg-[rgba(168,144,128,0.2)]" />
+          </div>
+          <h2 className="text-[2.4rem] font-extrabold text-surface tracking-tight leading-[1.08] mb-3">
+            Pick your mode.
+          </h2>
+          <p className="text-[0.88rem] text-muted font-medium">
+            Six ways to run a query. One platform.
+          </p>
         </div>
 
         <div
