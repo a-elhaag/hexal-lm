@@ -5,7 +5,7 @@ Uses the FakeSession pattern from conftest.py.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone as tz, timedelta
+from datetime import datetime, timezone as tz, timedelta
 from typing import Any
 
 import pytest
@@ -26,14 +26,14 @@ class _FakeQuota:
         user_id: uuid.UUID | None = None,
         daily_used: int = 0,
         rollover_balance: int = 0,
-        window_start_date: date | None = None,
+        window_start: datetime | None = None,
         timezone: str = "UTC",
         updated_at: datetime | None = None,
     ) -> None:
         self.user_id = user_id or uuid.uuid4()
         self.daily_used = daily_used
         self.rollover_balance = rollover_balance
-        self.window_start_date = window_start_date or datetime.now(tz.utc).date()
+        self.window_start = window_start or datetime.now(tz.utc)
         self.timezone = timezone
         self.updated_at = updated_at or datetime.now(tz.utc)
 
@@ -42,7 +42,7 @@ def _make_quota(
     user_id: uuid.UUID | None = None,
     daily_used: int = 0,
     rollover_balance: int = 0,
-    window_start_date: date | None = None,
+    window_start: datetime | None = None,
     timezone: str = "UTC",
     updated_at: datetime | None = None,
 ) -> _FakeQuota:
@@ -51,7 +51,7 @@ def _make_quota(
         user_id=user_id,
         daily_used=daily_used,
         rollover_balance=rollover_balance,
-        window_start_date=window_start_date,
+        window_start=window_start,
         timezone=timezone,
         updated_at=updated_at,
     )
@@ -98,7 +98,7 @@ async def test_get_or_create_fresh_user() -> None:
     assert quota.user_id == user_id
     assert quota.daily_used == 0
     assert quota.rollover_balance == 0
-    assert quota.window_start_date == datetime.now(tz.utc).date()
+    assert quota.window_start.date() == datetime.now(tz.utc).date()
     assert db.added == [quota]
 
 
@@ -106,7 +106,7 @@ async def test_get_or_create_fresh_user() -> None:
 async def test_get_or_create_existing_same_day() -> None:
     """Existing user with same-day updated_at is returned without modification."""
     today = datetime.now(tz.utc)
-    existing = _make_quota(daily_used=10, rollover_balance=5, updated_at=today)
+    existing = _make_quota(daily_used=10, rollover_balance=5, window_start=today)
     db = FakeSession(existing=existing)
 
     quota = await QuotaService.get_or_create(db, existing.user_id)
@@ -124,7 +124,7 @@ async def test_get_or_create_new_day_resets_and_computes_rollover() -> None:
     existing = _make_quota(
         daily_used=30,
         rollover_balance=0,
-        window_start_date=yesterday.date() - timedelta(days=1),  # 2 days ago, within window
+        window_start=datetime.now(tz.utc) - timedelta(days=2),  # 2 days ago, within window
         updated_at=yesterday,
     )
     db = FakeSession(existing=existing)
@@ -143,7 +143,7 @@ async def test_get_or_create_day4_zeroes_rollover_and_resets_window() -> None:
     existing = _make_quota(
         daily_used=10,
         rollover_balance=20,
-        window_start_date=four_days_ago.date(),
+        window_start=four_days_ago,
         updated_at=four_days_ago,
     )
     db = FakeSession(existing=existing)
@@ -151,7 +151,7 @@ async def test_get_or_create_day4_zeroes_rollover_and_resets_window() -> None:
     quota = await QuotaService.get_or_create(db, existing.user_id)
 
     assert quota.rollover_balance == 0
-    assert quota.window_start_date == datetime.now(tz.utc).date()
+    assert quota.window_start.date() == datetime.now(tz.utc).date()
     assert quota.daily_used == 0
 
 
@@ -249,13 +249,12 @@ async def test_deduct_unknown_model_uses_default_weight() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deduct_updates_rollover_balance() -> None:
-    """After deduct, rollover_balance reflects leftover * ROLLOVER_RATE."""
+async def test_deduct_only_updates_daily_used() -> None:
+    """deduct() updates daily_used only — rollover is computed at window reset, not here."""
     db = FakeSession()
-    # available = 100 + 0 = 100; use 60 → leftover = 40 → rollover = int(40 * 0.5) = 20
-    quota = _make_quota(daily_used=0, rollover_balance=0)
+    quota = _make_quota(daily_used=0, rollover_balance=5)
 
     await QuotaService.deduct(db, quota, tokens_out=60, model="Swift")  # weight=1.0
 
     assert quota.daily_used == 60
-    assert quota.rollover_balance == 20
+    assert quota.rollover_balance == 5  # unchanged by design

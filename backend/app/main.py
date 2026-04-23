@@ -7,7 +7,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.debug import router as debug_router
 from app.api.prompt_forge import router as forge_router
 from app.api.query import router as query_router
 from app.api.quota import router as quota_router
@@ -15,6 +14,7 @@ from app.auth.middleware import get_current_user
 from app.auth.mock import mock_get_current_user
 from app.config import get_settings
 from app.db.session import dispose_engine
+from app.logging_config import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,15 @@ def _warn_missing_optional_config() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    configure_logging()
+    settings = get_settings()
     _warn_missing_optional_config()
+    # Pre-warm JWKS cache to avoid first-request latency spike
+    try:
+        from app.auth.jwt import _jwks_client
+        _jwks_client(settings.supabase_jwks_url).get_jwk_set()
+    except Exception:
+        pass
     try:
         yield
     finally:
@@ -59,7 +67,6 @@ app = FastAPI(title="Hexal-LM Backend", version="0.1.0", lifespan=lifespan)
 if os.getenv("MOCK_AUTH") == "1":
     app.dependency_overrides[get_current_user] = mock_get_current_user
 
-app.include_router(debug_router)
 app.include_router(query_router)
 app.include_router(forge_router)
 app.include_router(quota_router)

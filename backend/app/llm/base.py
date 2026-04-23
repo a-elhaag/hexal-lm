@@ -13,12 +13,6 @@ class ToolCall:
 
 
 @dataclass(frozen=True, slots=True)
-class ToolResult:
-    tool_use_id: str
-    content: str
-
-
-@dataclass(frozen=True, slots=True)
 class Message:
     role: Literal["system", "user", "assistant", "tool"]
     content: str
